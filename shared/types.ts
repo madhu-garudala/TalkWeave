@@ -67,6 +67,7 @@ export type Session = {
   photoTimezone: string;
   deviceOffset: number;
   recordingSegments: RecordingSegment[];
+  capture?: CaptureMetadata;
   audio?: {
     name: string;
     original: string;
@@ -101,3 +102,11 @@ export const secondsLabel = (s: number) =>
     .padStart(2, "0")}:${Math.floor(s % 60)
     .toString()
     .padStart(2, "0")}`;
+
+export type CaptureMetadata = {
+  id: string;
+  startedAt: string;
+  intervals: RecordingSegment[];
+  interrupted: boolean;
+  warnings: string[];
+};

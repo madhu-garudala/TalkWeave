@@ -25,6 +25,8 @@ import {
   Play,
   Clock3,
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import type {
   Config,
@@ -33,9 +35,13 @@ import type {
   Section,
   Session,
   Transcript,
+  CaptureMetadata,
 } from "../shared/types";
 import { secondsLabel } from "../shared/types";
 import "./style.css";
+import { Library, type Summary } from "./Library";
+import { Recorder } from "./Recorder";
+import { deleteRecording } from "./recording-store";
 let csrf = "";
 async function api<T>(url: string, method = "GET", body?: unknown): Promise<T> {
   const res = await fetch("/api" + url, {
@@ -56,17 +62,6 @@ async function api<T>(url: string, method = "GET", body?: unknown): Promise<T> {
   if (res.status === 204) return undefined as T;
   return res.json();
 }
-type Summary = {
-  id: string;
-  title: string;
-  speaker: string;
-  event: string;
-  createdAt: string;
-  mode: string;
-  photoCount: number;
-  duration?: number;
-  status: string;
-};
 const media = (s: Session, file: string) =>
   `/api/sessions/${s.id}/media/${encodeURIComponent(file)}`;
 const kindName = (kind: string) => kind.replaceAll("-", " ");
@@ -79,6 +74,7 @@ function App() {
     () => localStorage.getItem("talkweave-theme") !== "light",
   );
   const [busy, setBusy] = useState("");
+  const [captureActive, setCaptureActive] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [create, setCreate] = useState(false);
@@ -135,6 +131,7 @@ function App() {
     }
   }
   function show(value: Session) {
+    window.scrollTo({ top: 0, behavior: "instant" });
     selected.current = value.id;
     setS(value);
     setQuery("");
@@ -148,7 +145,25 @@ function App() {
     const value = await api<Session>(url, method, body);
     setS(value);
   }
-  const locked = !!busy || s?.job.status === "running";
+  const locked = !!busy || s?.job.status === "running" || captureActive;
+  async function saveCapture(file: File, capture: CaptureMetadata) {
+    if (!s) return;
+    setBusy("Saving recording");
+    try {
+      const data = new FormData();
+      data.append("audio", file);
+      data.append("capture", JSON.stringify(capture));
+      const updated = await api<Session>(
+        `/sessions/${s.id}/audio`,
+        "POST",
+        data,
+      );
+      setS(updated);
+      await refresh().catch(() => {});
+    } finally {
+      setBusy("");
+    }
+  }
   function seek(start: number, end: number) {
     if (audio.current) {
       audio.current.currentTime = start;
@@ -170,85 +185,82 @@ function App() {
     !query || text.toLowerCase().includes(query.toLowerCase());
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <header className="app-nav">
         <a
           className="brand"
           href="/"
           onClick={(e) => {
             e.preventDefault();
+            if (captureActive) return;
+            window.scrollTo({ top: 0, behavior: "instant" });
             selected.current = undefined;
             setS(undefined);
           }}
         >
           <span className="brand-icon">
-            <AudioLines size={23} />
+            <AudioLines size={25} />
           </span>
-          TalkWeave<span className="beta">LOCAL</span>
+          talkweave
+          <span className="brand-dot" aria-hidden="true">
+            ✳
+          </span>
         </a>
-        <div className="sidebar-section">YOUR WORKSPACE</div>
-        <button
-          className={"nav-button " + (!s ? "selected" : "")}
-          onClick={() => {
-            selected.current = undefined;
-            setS(undefined);
-          }}
-        >
-          <Layers3 size={18} />
-          All sessions<span>{list.length}</span>
-        </button>
-        <button
-          className="new-session"
-          onClick={() => setCreate(true)}
-          disabled={!config}
-        >
-          <Plus size={17} />
-          New session
-        </button>
-        <div className="sidebar-section recent-label">RECENT SESSIONS</div>
-        <div className="session-list">
-          {list.map((item) => (
-            <button
-              className={"session-item " + (s?.id === item.id ? "active" : "")}
-              key={item.id}
-              onClick={() => choose(item.id)}
-              disabled={!!busy}
-            >
-              <FileText size={16} />
-              <span>
-                {item.title}
-                <small>
-                  {item.mode === "fixture"
-                    ? "Demo fixture"
-                    : new Date(item.createdAt).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                </small>
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="sidebar-bottom">
-          <div className="privacy">
-            <ShieldCheck size={18} />
-            <div>
-              Private by default<small>Stored on this computer</small>
-            </div>
-          </div>
-          <button className="theme-button" onClick={() => setDark(!dark)}>
-            {dark ? <Sun size={17} /> : <Moon size={17} />}{" "}
-            {dark ? "Light appearance" : "Dark appearance"}
+        <nav className="main-nav" aria-label="Main navigation">
+          <button
+            className={!s ? "active" : ""}
+            disabled={captureActive}
+            onClick={() => {
+              selected.current = undefined;
+              setS(undefined);
+            }}
+          >
+            <Layers3 size={16} />
+            My library
+          </button>
+          {s && (
+            <span className="nav-current">
+              <ChevronRight size={14} />
+              Notebook
+            </span>
+          )}
+        </nav>
+        <div className="nav-actions">
+          <span className="local-badge">
+            <ShieldCheck size={14} />
+            Local workspace
+          </span>
+          <button
+            className="theme-button icon-button"
+            aria-label={dark ? "Light appearance" : "Dark appearance"}
+            title={dark ? "Light appearance" : "Dark appearance"}
+            onClick={() => setDark(!dark)}
+          >
+            {dark ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
+          <button
+            className="primary nav-create"
+            onClick={() => setCreate(true)}
+            disabled={!config || captureActive}
+          >
+            <Plus size={17} />
+            New session
           </button>
         </div>
-      </aside>
+      </header>
       <main className="workspace">
-        <header className="topbar">
-          <div className="breadcrumbs">
-            Workspace
-            <ChevronRight size={14} />
-            <span>{s ? "Session notebook" : "All sessions"}</span>
-          </div>
-          <div className="topbar-right">
+        {s && (
+          <div className="topbar">
+            <button
+              className="back-link"
+              disabled={captureActive}
+              onClick={() => {
+                selected.current = undefined;
+                setS(undefined);
+              }}
+            >
+              <ArrowLeft size={15} />
+              Back to library
+            </button>
             <span
               className={"connection " + (config?.configured ? "online" : "")}
             >
@@ -257,15 +269,8 @@ function App() {
                 ? "OpenAI configured"
                 : "Demo available · API key needed"}
             </span>
-            <button
-              className="icon-button mobile-theme"
-              aria-label="Toggle theme"
-              onClick={() => setDark(!dark)}
-            >
-              <Moon size={18} />
-            </button>
           </div>
-        </header>
+        )}
         {error && (
           <div className="error-banner" role="alert">
             <AlertCircle size={18} />
@@ -282,154 +287,23 @@ function App() {
           </div>
         )}
         {!s ? (
-          <div className="library">
-            <div className="eyebrow">LISTEN CLOSELY. KEEP THE WHOLE IDEA.</div>
-            <div className="library-heading">
-              <div>
-                <h1>Your talks, woven together.</h1>
-                <p>
-                  Turn recordings and slide photos into notes worth coming back
-                  to.
-                </p>
-              </div>
-              <button
-                className="primary"
-                onClick={() => setCreate(true)}
-                disabled={!config}
-              >
-                <Plus size={18} />
-                New session
-              </button>
-            </div>
-            <div className="welcome-card">
-              <div>
-                <span className="pill">FROM THE ROOM TO YOUR REFERENCE</span>
-                <h2>
-                  Less typing.
-                  <br />
-                  More understanding.
-                </h2>
-                <p>
-                  Bring the audio. Add your photos. Keep the explanation, the
-                  diagram, and the evidence in one place.
-                </p>
-                <button
-                  className="text-button"
-                  disabled={!!busy || !config}
-                  onClick={() =>
-                    run("Creating demo fixture", async () =>
-                      show(await api<Session>("/fixture", "POST")),
-                    )
-                  }
-                >
-                  Explore the demo notebook <ArrowUpRight size={17} />
-                </button>
-                <small>Authored fixture · silent audio · no API calls</small>
-              </div>
-              <div className="weave-illustration" aria-hidden="true">
-                <div className="illustration-label">
-                  <AudioLines size={20} />
-                  recording.wav <span>01:00:00</span>
-                </div>
-                <div className="wave">
-                  {Array.from({ length: 42 }, (_, i) => (
-                    <i
-                      key={i}
-                      style={{ height: 12 + Math.abs(Math.sin(i * 1.7)) * 42 }}
-                    />
-                  ))}
-                </div>
-                <div className="connection-line" />
-                <div className="mini-page">
-                  <span>01 / THE WHOLE IDEA</span>
-                  <h3>
-                    Context that stays
-                    <br />
-                    with the diagram.
-                  </h3>
-                  <div className="mini-diagram">
-                    <i>API</i>
-                    <span>→</span>
-                    <i>Queue</i>
-                    <span>→</span>
-                    <i>Worker</i>
-                  </div>
-                  <div className="mini-lines">
-                    <b />
-                    <b />
-                    <b />
-                  </div>
-                  <div className="mini-source">
-                    <Play size={10} />
-                    12:30 – 14:00 <span>Source linked</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="list-heading">
-              <h2>
-                Session library <span>{list.length}</span>
-              </h2>
-              <span>Only on this device</span>
-            </div>
-            {!list.length ? (
-              <div className="empty-library">
-                <BookOpen size={27} />
-                <h3>A little context goes a long way.</h3>
-                <p>
-                  Import your first talk, or explore the demo to see how sources
-                  fit together.
-                </p>
-              </div>
-            ) : (
-              <div className="library-grid">
-                {list.map((item) => (
-                  <button
-                    className="library-card"
-                    key={item.id}
-                    onClick={() => choose(item.id)}
-                  >
-                    <div>
-                      <span className="card-icon">
-                        {item.mode === "fixture" ? (
-                          <FlaskConical size={21} />
-                        ) : (
-                          <FileAudio size={21} />
-                        )}
-                      </span>
-                      <span className="pill">
-                        {item.mode === "fixture" ? "Demo fixture" : item.status}
-                      </span>
-                    </div>
-                    <h3>{item.title}</h3>
-                    <p>{item.event || "Personal session"}</p>
-                    <footer>
-                      <span>
-                        <Clock3 size={14} />
-                        {item.duration
-                          ? secondsLabel(item.duration)
-                          : "No audio yet"}
-                      </span>
-                      <span>
-                        <ImageIcon size={14} />
-                        {item.photoCount} photos
-                      </span>
-                      <ArrowUpRight size={17} />
-                    </footer>
-                  </button>
-                ))}
-              </div>
-            )}
-            <p className="local-footnote">
-              Cloud processing sends imported audio and display images to
-              OpenAI. Record and upload only where permitted.
-            </p>
-          </div>
+          <Library
+            sessions={list}
+            ready={!!config}
+            busy={!!busy}
+            onCreate={() => setCreate(true)}
+            onDemo={() =>
+              run("Creating demo fixture", async () =>
+                show(await api<Session>("/fixture", "POST")),
+              )
+            }
+            onOpen={choose}
+          />
         ) : (
           <>
             <section className="session-heading">
               <div className="eyebrow">
-                SESSION NOTEBOOK{" "}
+                THE SESSION NOTEBOOK{" "}
                 {s.mode === "fixture" && (
                   <span className="fixture-tag">DEMO FIXTURE</span>
                 )}
@@ -446,7 +320,7 @@ function App() {
                     <Settings2 size={18} />
                   </button>
                   <button
-                    className="secondary"
+                    className="primary"
                     onClick={() => setExporting(true)}
                     disabled={!s.notes || locked}
                   >
@@ -467,6 +341,21 @@ function App() {
                 <span>{s.photos.length} photos</span>
               </div>
             </section>
+            {!s.audio && (
+              <Recorder
+                key={s.id}
+                sessionId={s.id}
+                disabled={!!busy || s.job.status === "running"}
+                onActive={setCaptureActive}
+                onSave={saveCapture}
+              />
+            )}
+            {s.capture?.warnings.length ? (
+              <div className="notice warning">
+                <AlertCircle size={17} />
+                <span>{s.capture.warnings.join(" ")}</span>
+              </div>
+            ) : null}
             {s.mode === "fixture" && (
               <div className="notice fixture-notice">
                 <FlaskConical size={17} />
@@ -559,7 +448,7 @@ function App() {
                     <div className="import-card">
                       <span className="step-number">01</span>
                       <div>
-                        <h3>Talk recording</h3>
+                        <h3>Or import an existing recording</h3>
                         <p>
                           MP3, M4A, WAV, MP4, WebM, OGG, FLAC, MPEG, MPGA · up
                           to 250 MB / 2 hours
@@ -817,7 +706,10 @@ function App() {
                         </div>
                       )}
                       <div className="document-kicker">
-                        DETAILED NOTES{" "}
+                        <span className="document-icon">
+                          <BookOpen size={20} />
+                        </span>{" "}
+                        THE NOTEBOOK{" "}
                         <span>
                           {s.notes.sections.length} sections · source linked
                         </span>
@@ -860,6 +752,65 @@ function App() {
                         <span>✦</span> The idea, with its context intact.
                       </div>
                     </article>
+                    <aside className="evidence-rail">
+                      <div className="rail-heading">
+                        <span className="eyebrow">THE SOURCE MATERIAL</span>
+                        <span>{s.photos.length}</span>
+                      </div>
+                      <h3>
+                        Every picture.
+                        <br />
+                        In context.
+                      </h3>
+                      {s.photos.length ? (
+                        s.photos.map((p, i) => (
+                          <button
+                            className="evidence-thumb"
+                            key={p.id}
+                            onClick={() => setTab("photos")}
+                            aria-label={`Review source photo ${i + 1}`}
+                          >
+                            <img
+                              src={media(s, p.display)}
+                              alt={p.analysis?.description || p.name}
+                            />
+                            <span>
+                              <b>PHOTO {String(i + 1).padStart(2, "0")}</b>
+                              <ArrowUpRight size={14} />
+                            </span>
+                            <small>
+                              {p.alignment.status === "unmatched"
+                                ? "Not yet aligned"
+                                : `${secondsLabel(p.alignment.start)} – ${secondsLabel(p.alignment.end)}`}
+                            </small>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="muted">
+                          Add photos in Import to keep the visual context
+                          alongside the words.
+                        </p>
+                      )}
+                      <button
+                        className="rail-transcript"
+                        onClick={() => setTab("transcript")}
+                      >
+                        <AudioLines size={20} />
+                        <span>
+                          Return to the words
+                          <small>
+                            {s.transcript.length} transcript windows
+                          </small>
+                        </span>
+                        <ArrowRight size={16} />
+                      </button>
+                      <div className="rail-tip">
+                        <ShieldCheck size={18} />
+                        <p>
+                          Follow any timestamp to hear the original explanation.
+                        </p>
+                      </div>
+                    </aside>
                   </div>
                 ))}
               {tab === "transcript" && (
@@ -1089,6 +1040,11 @@ function App() {
             onClick={() =>
               run("Deleting session", async () => {
                 await api(`/sessions/${s.id}`, "DELETE");
+                await deleteRecording(s.id).catch(() =>
+                  setError(
+                    "Session deleted, but browser recording storage could not be cleared. Clear this site’s browser data to remove remaining local chunks.",
+                  ),
+                );
                 selected.current = undefined;
                 setS(undefined);
                 setSettings(false);

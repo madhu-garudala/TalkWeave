@@ -15,6 +15,7 @@ export const escape = (text: string) =>
 export function manifest(s: Session, audio = false) {
   return {
     schemaVersion: 1,
+    capture: s.capture,
     session: {
       id: s.id,
       title: s.title,

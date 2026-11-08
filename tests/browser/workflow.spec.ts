@@ -10,7 +10,7 @@ test("demo import/review/export persists edits and renders offline without a bac
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Your talks, woven together." }),
+    page.getByRole("heading", { name: "Your library." }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Explore the demo notebook/ }).click();
   await expect(
@@ -163,6 +163,7 @@ test("demo import/review/export persists edits and renders offline without a bac
         ),
     )
     .toBe(true);
+  await expect(page.locator(".busy-bar")).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({
     path: testInfo.outputPath("notebook-desktop-dark.png"),
@@ -273,4 +274,87 @@ test("real session imports actual audio/photos; missing credentials and unsafe r
   await expect(page.getByText("2 photos safely imported.")).toBeVisible();
   await request.delete(`/api/sessions/${created.id}`, { headers });
   expect((await request.get(`/api/sessions/${created.id}`)).status()).toBe(404);
+});
+
+test("redesigned library filters, searches, and creates notebooks on mobile", async ({
+  page,
+  request,
+}, testInfo) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Your library." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Demos", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Demos", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".library-card").first()).toBeVisible();
+  expect(await page.locator(".library-card .pill").allTextContents()).toEqual(
+    expect.arrayContaining(["Demo fixture"]),
+  );
+  await page.getByLabel("Search sessions").fill("no-such-talk-239038");
+  await expect(page.getByText("Nothing here just yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Reset filters" }).click();
+  await expect(page.getByLabel("Search sessions")).toHaveValue("");
+  await expect(page.locator(".busy-bar")).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({
+    path: testInfo.outputPath("library-dark.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Light appearance" }).click();
+  await page.screenshot({
+    path: testInfo.outputPath("library-light.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Dark appearance" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("library-mobile.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "New session", exact: true }).click();
+  const title = `Redesign UI test ${Date.now()}`;
+  await page.getByLabel("Talk title").fill(title);
+  await page
+    .getByRole("button", { name: "Create session", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: title, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Import audio")).toBeAttached();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "Start recording", exact: true }),
+  ).toBeEnabled();
+  await expect(page.locator(".busy-bar")).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("import-mobile.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Session settings" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByLabel("Search sessions").fill(title);
+  await expect(page.locator(".library-card")).toHaveCount(1);
+  const config = await (await request.get("/api/config")).json();
+  const sessions = await (await request.get("/api/sessions")).json();
+  const created = sessions.find((s: { title: string }) => s.title === title);
+  expect(
+    (
+      await request.delete(`/api/sessions/${created.id}`, {
+        headers: { "X-TalkWeave-Token": config.token },
+      })
+    ).ok(),
+  ).toBe(true);
 });

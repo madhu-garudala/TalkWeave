@@ -69,7 +69,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "2mb" }));
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 250 * 1024 * 1024, files: 1, fields: 0 },
+  limits: { fileSize: 250 * 1024 * 1024, files: 1, fields: 1 },
 });
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -111,6 +111,22 @@ const metadata = z.object({
     )
     .max(200)
     .optional(),
+});
+const captureSchema = z.object({
+  id: z.string().uuid(),
+  startedAt: date,
+  intervals: z
+    .array(
+      z.object({
+        wallStart: date,
+        wallEnd: date,
+        mediaStart: z.number().nonnegative(),
+        mediaEnd: z.number().nonnegative(),
+      }),
+    )
+    .max(1000),
+  interrupted: z.boolean(),
+  warnings: z.array(z.string().max(1000)).max(100),
 });
 app.get("/api/config", async (_req, res) =>
   res.json({
@@ -180,6 +196,10 @@ app.post(
   async (req, res) => {
     const s = session(req.params.id);
     idle(s);
+    const capture = req.body?.capture
+      ? captureSchema.parse(JSON.parse(req.body.capture))
+      : undefined;
+    if (s.audio && capture && s.capture?.id === capture.id) return res.json(s);
     if (s.audio)
       throw new Error(
         "Audio is already imported. Create a new session for a different recording.",
@@ -208,8 +228,38 @@ app.post(
     const playback = path.join(dir(s.id), "audio.mp3");
     try {
       fs.writeFileSync(file, req.file.buffer, { mode: 0o600 });
-      const d = await duration(file);
-      await convertAudio(file, playback);
+      let d: number | undefined;
+      try {
+        d = await duration(file);
+      } catch (error) {
+        // MediaRecorder WebM streams can omit container duration. Decode the
+        // complete ordered stream before measuring it; never count chunks.
+        if (![".webm", ".ogg"].includes(ext)) throw error;
+      }
+      await convertAudio(file, playback, undefined, undefined, 7201);
+      const decodedDuration = await duration(playback);
+      d ??= decodedDuration;
+      let captureSegments: Session["recordingSegments"] = [];
+      if (capture) {
+        const recordedEnd = capture.intervals.at(-1)?.mediaEnd || 0;
+        if (
+          !capture.interrupted &&
+          capture.intervals.length &&
+          Math.abs(recordedEnd - d) < 1
+        ) {
+          captureSegments = structuredClone(capture.intervals);
+          captureSegments[captureSegments.length - 1].mediaEnd = d;
+          try {
+            validateSegments(captureSegments, d);
+          } catch {
+            captureSegments = [];
+          }
+        }
+        if (!captureSegments.length)
+          capture.warnings.push(
+            "Capture timing could not be reconciled with decoded audio. Use manual photo alignment; no exact recording intervals were inferred.",
+          );
+      }
       s.audio = {
         name: path.basename(req.file.originalname),
         original,
@@ -228,6 +278,11 @@ app.post(
             mediaEnd: d,
           },
         ];
+      if (capture) {
+        s.capture = capture;
+        s.recordingStart = capture.startedAt;
+        s.recordingSegments = captureSegments;
+      }
       s.evidenceRevision++;
       realign(s);
       save(s);

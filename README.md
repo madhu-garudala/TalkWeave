@@ -1,6 +1,6 @@
 # TalkWeave
 
-Turn recordings of in-person technical talks and ordinary camera photos into detailed, illustrated, searchable notes with traceable evidence. Local-first import prototype; dark and light themes. **No hosted deployment, account system, or live microphone capture yet.**
+Turn recordings of in-person technical talks and ordinary camera photos into detailed, illustrated, searchable notes with traceable evidence. Local-first capture and import prototype with a searchable notebook library, dark and light themes, and responsive evidence review. **No hosted deployment or account system.**
 
 ## Run locally
 
@@ -26,7 +26,7 @@ The app stores sessions, original media, normalized playback audio, metadata-str
 
 ## Use the workflow
 
-1. Create a session. Import one recording and multiple photos. Files are saved locally before cloud processing. Set optional speaker/event metadata in session settings.
+1. Choose **New session** (or **Record or import**). Record directly with the device microphone, or import an existing audio file. Add slide photos after stopping capture. Files are saved locally before cloud processing. Set optional speaker/event metadata in session settings.
 2. Set the actual recording start with an explicit UTC offset (for example `2026-11-07T18:00:00-05:00`), or leave it unknown. **File modification/upload times are never treated as capture times.** Set an assumed photo offset only if EXIF lacks one. For a phone three minutes fast, use a device correction of `-180` seconds.
 3. If the audio combines recording intervals around pauses, enable the advanced interval editor. Each interval records absolute wall times and media offsets. Photos in gaps are unmatched; they are not assigned an exact audio counterpart.
 4. Select **Create my notebook**. Audio windows and photo analyses checkpoint independently. Cancel/resume or retry failed stages without reimporting or replacing corrections.
@@ -34,7 +34,19 @@ The app stores sessions, original media, normalized playback audio, metadata-str
 6. Edit section text and add explicitly labeled personal notes. New generation creates a separate proposed draft; compare it before replacing the current document. Prior document revisions remain in local session history. Changes to sources flag existing notes as potentially stale.
 7. Export **portable HTML** and a **source manifest**, or download the **evidence ZIP**. Extract the ZIP before opening `index.html` so its relative audio file is available. Standalone HTML embeds images and transcript, clearly excludes audio, and contains no misleading playback buttons. Native browser Find searches the export.
 
-Record and upload only where permitted. Cloud processing sends audio windows and derived display images to OpenAI. Local import/review/export do not require a provider call. This app does not capture from a microphone in M1.
+Record and upload only where permitted. Cloud processing sends audio windows and derived display images to OpenAI. Recording, local import, review, and export do not require a provider call. **Create my notebook** starts paid OpenAI processing using the server-side key.
+
+## Record from this device
+
+1. In a new session, select **Start recording** and allow microphone access. The elapsed timer and input-level meter show capture activity.
+2. Use **Pause recording**, **Resume recording**, and **Stop recording**. Keep the tab visible. Switching apps or hiding the tab pauses capture; return and explicitly resume. Screen-lock/background recording is not supported.
+3. Preview or **Download audio**, then **Save to session**. Add photos and select **Create my notebook**. Captured audio goes through the same normalization, transcription, alignment, notes, and export pipeline as imported audio.
+
+The browser saves ordered audio chunks to IndexedDB approximately every second. If the page reloads, reopen the same session on the same browser and origin to recover saved chunks. The final unsaved portion can be lost; recovery is not a guarantee against device shutdown or browser eviction. If saving to the server fails, the local draft stays available for manual retry or download. There is no automatic background upload queue. Clearing site data deletes unsaved browser recordings. If storage fills, capture stops and the tab offers a download of the available audio; keep that tab open until you save it.
+
+Wall-clock intervals and elapsed media time are measured independently of chunk delivery. Pauses remain gaps for photo alignment. If recovered audio is interrupted or its decoded duration does not reconcile with the measured intervals, automatic clock alignment is withheld and a visible warning requests review. Recording ends at roughly two hours or 240 MB. The browser retains audio in memory as well as local storage; full-length memory/storage behavior still needs real-device testing.
+
+**Tested scope:** automated Google Chrome on macOS with a synthetic microphone, including pause/resume, interrupted reload, offline/retried saving, permission denial, simulated microphone loss, and simulated storage exhaustion. This is not physical-microphone or mobile reliability validation. The UI works at phone widths, but Safari/iPhone/Android capture, camera switching, and full-length sessions remain untested. Capture needs a supported browser at HTTPS or localhost; the current loopback-only development server cannot be opened from another phone. Use your computer's microphone for the local workflow.
 
 ## Supported inputs and limits
 
@@ -87,8 +99,8 @@ See [architecture and risk decisions](docs/ARCHITECTURE.md) and [milestone verif
 
 Localhost host/origin checks and a per-process mutation token block ordinary cross-origin browser writes and DNS rebinding. Media is served only from the session's enumerated assets, including byte-range audio playback. There is **no multi-user authentication or authorization**. Other software/users with access to this computer can access local data; do not expose this server through a tunnel, public bind, or hosted reverse proxy.
 
-Deleting a session cancels processing, waits for pending work to stop, and removes its managed assets and revisions. It cannot remove previously downloaded exports or control provider/back-up retention. Exported display images have no GPS metadata; originals are deliberately excluded from both export modes. ZIP generation is buffered in memory and should be done one session at a time.
+Deleting a session cancels processing, waits for pending work to stop, removes its managed assets and revisions, and attempts to remove its recording draft in the current browser. Drafts in other browsers/origins are separate site data. It cannot remove previously downloaded exports or control provider/back-up retention. Exported display images have no GPS metadata; originals are deliberately excluded from both export modes. ZIP generation is buffered in memory and should be done one session at a time.
 
 ## Next milestone
 
-First close the M1 real-talk evaluation gate with a consented recording and ordinary phone photos. Then M2 adds recoverable microphone capture, pause/resume and highlights, offline upload queues, explicit interruptions, and real desktop/iPhone device testing. Do not advertise iPhone background recording until it has passed full-length, screen-lock, and camera-switching tests.
+First close the M1 real-talk evaluation gate with a consented recording and ordinary phone photos. Basic microphone capture, pause/resume, saved-chunk recovery, and explicit interruption handling are now implemented. Complete M2 with full-length real desktop/iPhone device testing, recording highlights, and an automatic offline upload queue. Do not advertise iPhone background recording until it has passed full-length, screen-lock, and camera-switching tests.
