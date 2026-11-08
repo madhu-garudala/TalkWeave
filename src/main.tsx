@@ -150,6 +150,15 @@ function App() {
     if (!s) return;
     setBusy("Saving recording");
     try {
+      // Re-read readiness and the mutation token without reloading or losing
+      // the recording when a server was restarted while this tab stayed open.
+      const current = await api<Config & { token: string }>("/config");
+      csrf = current.token;
+      setConfig(current);
+      if (current.captureVersion !== 1)
+        throw new Error(
+          "The running server needs to be restarted to attach recordings. Stop it with Ctrl+C, run npm run dev again, then retry Save to session here. Your browser recording is retained; you can also download a backup.",
+        );
       const data = new FormData();
       data.append("audio", file);
       data.append("capture", JSON.stringify(capture));
@@ -159,6 +168,7 @@ function App() {
         data,
       );
       setS(updated);
+      setTab("import");
       await refresh().catch(() => {});
     } finally {
       setBusy("");
@@ -345,6 +355,8 @@ function App() {
               <Recorder
                 key={s.id}
                 sessionId={s.id}
+                sessionTitle={s.title}
+                serverReady={config?.captureVersion === 1}
                 disabled={!!busy || s.job.status === "running"}
                 onActive={setCaptureActive}
                 onSave={saveCapture}
@@ -448,17 +460,22 @@ function App() {
                     <div className="import-card">
                       <span className="step-number">01</span>
                       <div>
-                        <h3>Or import an existing recording</h3>
+                        <h3>
+                          {s.audio
+                            ? "Session recording"
+                            : "Or import an existing recording"}
+                        </h3>
                         <p>
                           MP3, M4A, WAV, MP4, WebM, OGG, FLAC, MPEG, MPGA · up
                           to 250 MB / 2 hours
                         </p>
                         {s.audio ? (
-                          <div className="file-imported">
+                          <div className="file-imported" role="status">
                             <Check size={18} />
                             <span>
                               {s.audio.name}
                               <small>
+                                Attached to this session ·{" "}
                                 {secondsLabel(s.audio.duration)} · original
                                 preserved
                               </small>
@@ -608,20 +625,26 @@ function App() {
                       disabled={
                         locked ||
                         !s.audio ||
-                        !config?.configured ||
-                        s.mode === "fixture"
+                        (!s.notes && !config?.configured) ||
+                        (!s.notes && s.mode === "fixture")
                       }
-                      onClick={() => process("all")}
+                      onClick={() =>
+                        s.notes ? setTab("notes") : process("all")
+                      }
                     >
-                      {s.job.status === "error"
-                        ? "Resume processing"
-                        : "Create my notebook"}
+                      {s.notes
+                        ? "Open notebook"
+                        : s.job.status === "error"
+                          ? "Resume processing"
+                          : "Create my notebook"}
                       <ArrowUpRight size={16} />
                     </button>
                     <small>
-                      {config?.configured
-                        ? "Sends audio and display photos to OpenAI."
-                        : "Add OPENAI_API_KEY to .env, then restart the server."}
+                      {s.notes
+                        ? "Your notebook is ready. Open it to review the notes and their sources."
+                        : config?.configured
+                          ? "Sends audio and display photos to OpenAI."
+                          : "Add OPENAI_API_KEY to .env, then restart the server."}
                     </small>
                     <p>
                       Reserved test allowance: $

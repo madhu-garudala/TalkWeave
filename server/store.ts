@@ -24,16 +24,23 @@ for (const entry of fs
   const file = path.join(DATA, entry.name, "session.json");
   if (!fs.existsSync(file)) continue;
   const s = JSON.parse(fs.readFileSync(file, "utf8")) as Session;
-  if (s.job.status === "running") {
-    s.job = {
-      status: "error",
-      stage: s.job.stage,
-      progress: "Interrupted by server restart. Resume to keep completed work.",
-      error: "Processing was interrupted.",
-    };
-    atomic(file, s);
-  }
   sessions.set(s.id, s);
+}
+// Run only after the HTTP port is acquired; a failed second startup must not
+// rewrite a live process's job state on disk.
+export function recoverInterruptedJobs() {
+  for (const s of sessions.values()) {
+    if (s.job.status === "running") {
+      s.job = {
+        status: "error",
+        stage: s.job.stage,
+        progress:
+          "Interrupted by server restart. Resume to keep completed work.",
+        error: "Processing was interrupted.",
+      };
+      atomic(path.join(dir(s.id), "session.json"), s);
+    }
+  }
 }
 export function save(s: Session) {
   if (!sessions.has(s.id)) throw new Error("Session no longer exists.");

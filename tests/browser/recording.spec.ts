@@ -351,3 +351,54 @@ test("cancelling a permission request stops a microphone granted late", async ({
     (await request.delete(`/api/sessions/${s.id}`, { headers })).ok(),
   ).toBe(true);
 });
+
+test("an outdated server explains attachment failure and retained audio saves after readiness returns", async ({
+  page,
+  request,
+}) => {
+  const { s, headers } = await newSession(
+    page,
+    request,
+    `Old server test ${Date.now()}`,
+  );
+  await page
+    .getByRole("button", { name: "Start recording", exact: true })
+    .click();
+  await expect.poll(() => chunkCount(page)).toBeGreaterThanOrEqual(1);
+  await page
+    .getByRole("button", { name: "Stop recording", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save to session", exact: true }),
+  ).toBeEnabled();
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const config = await response.json();
+    delete config.captureVersion;
+    config.token = "stale-before-server-restart";
+    await route.fulfill({ response, json: config });
+  });
+  let uploads = 0;
+  page.on("request", (r) => {
+    if (r.url().endsWith(`/sessions/${s.id}/audio`)) uploads++;
+  });
+  await page
+    .getByRole("button", { name: "Save to session", exact: true })
+    .click();
+  await expect(
+    page.getByText(/Your browser recording is retained/),
+  ).toBeVisible();
+  expect(uploads).toBe(0);
+  await expect(
+    page.getByRole("link", { name: "Download audio" }),
+  ).toBeVisible();
+  await page.unroute("**/api/config");
+  await page
+    .getByRole("button", { name: "Save to session", exact: true })
+    .click();
+  await expect(page.getByText(/Attached to this session/)).toBeVisible();
+  expect(uploads).toBe(1);
+  expect(
+    (await request.delete(`/api/sessions/${s.id}`, { headers })).ok(),
+  ).toBe(true);
+});

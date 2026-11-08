@@ -13,7 +13,7 @@ cp -n .env.example .env
 npm run dev
 ```
 
-Open **http://127.0.0.1:3000**. The server binds to loopback only. `.env` takes precedence over inherited environment values; restart the server after changing it. Neither the key nor provider error payloads are sent to the browser. Vite hot reload covers the UI, not backend source changes.
+Open **http://127.0.0.1:3000**. The server binds to loopback only. `.env` takes precedence over inherited environment values; restart the server after changing it. Neither the key nor provider error payloads are sent to the browser. Vite hot reload covers the UI, not backend source changes. Run one copy in a regular terminal and keep it open; starting a second copy does not restart the first. The app and HMR share port 3000. If the port is occupied, stop the existing server in its terminal before starting again.
 
 For a production-mode local preview:
 
@@ -40,7 +40,9 @@ Record and upload only where permitted. Cloud processing sends audio windows and
 
 1. In a new session, select **Start recording** and allow microphone access. The elapsed timer and input-level meter show capture activity.
 2. Use **Pause recording**, **Resume recording**, and **Stop recording**. Keep the tab visible. Switching apps or hiding the tab pauses capture; return and explicitly resume. Screen-lock/background recording is not supported.
-3. Preview or **Download audio**, then **Save to session**. Add photos and select **Create my notebook**. Captured audio goes through the same normalization, transcription, alignment, notes, and export pipeline as imported audio.
+3. Preview or **Download audio**, then **Save to session**. Confirm **Attached to this session**, add photos, and select **Create my notebook → Open notebook**. Captured audio goes through the same normalization, transcription, alignment, notes, and export pipeline as imported audio.
+
+For the exact recovery path and the verified recording-to-export run, see [recording troubleshooting and end-to-end results](docs/RECORDING_E2E.md). Browser drafts are tied to the original address: `localhost` and `127.0.0.1` have separate storage.
 
 The browser saves ordered audio chunks to IndexedDB approximately every second. If the page reloads, reopen the same session on the same browser and origin to recover saved chunks. The final unsaved portion can be lost; recovery is not a guarantee against device shutdown or browser eviction. If saving to the server fails, the local draft stays available for manual retry or download. There is no automatic background upload queue. Clearing site data deletes unsaved browser recordings. If storage fills, capture stops and the tab offers a download of the available audio; keep that tab open until you save it.
 

@@ -24,6 +24,12 @@ Capture times plus an explicit offset map onto recording intervals with separate
 
 Exports reject missing display media, invalid source IDs, source-less claims, photo-only speaker claims, and direct quotes not found verbatim in one referenced transcript segment. Semantic factual support still requires human review. Correcting a transcript may invalidate an earlier direct quote; repair or regenerate that claim before export. A stale-evidence banner accompanies notes generated against older evidence.
 
+## Development startup and capture compatibility
+
+The HTTP listener is acquired before Vite starts or interrupted jobs are recovered. Duplicate startup exits visibly without modifying running-job state. While initialization finishes, the listener returns retryable HTTP 503; it never leaves an early health request hanging. Vite HMR uses that same loopback listener, and generated media/export directories are excluded from source reloads.
+
+The config endpoint exposes `captureVersion: 1`. The browser checks it before attaching recordings and refreshes the per-process mutation token on that save, preserving drafts through backend restarts. This addresses a reproduced mixed-version UI/server failure; UI hot reload alone cannot update backend code.
+
 ## Consequential limits
 
 - Local JSON storage is designed for one server process, not multi-worker concurrency. OS/filesystem errors surface; no database transactions, resumable large uploads, or cross-device sync yet.

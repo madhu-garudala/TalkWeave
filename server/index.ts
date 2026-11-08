@@ -1,5 +1,6 @@
 import "./config.js";
 import express from "express";
+import { createServer as createHttpServer } from "node:http";
 import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,6 +14,7 @@ import {
   save,
   removeSession,
   budget,
+  recoverInterruptedJobs,
 } from "./store.js";
 import {
   convertAudio,
@@ -132,6 +134,7 @@ app.get("/api/config", async (_req, res) =>
   res.json({
     token,
     configured: !!process.env.OPENAI_API_KEY,
+    captureVersion: 1,
     transcriptionModel: transcriptionModel(),
     notesModel: notesModel(),
     budget: budget(),
@@ -507,21 +510,59 @@ app.use(
     });
   },
 );
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.resolve("dist")));
-  app.get("/{*path}", (_req, res) =>
-    res.sendFile(path.resolve("dist/index.html")),
-  );
-} else {
-  const { createServer } = await import("vite");
-  const vite = await createServer({
-    server: { middlewareMode: true, hmr: { port: port + 1 } },
-    appType: "spa",
+// Bind first: a second process must not start Vite or claim it is ready.
+// HMR shares the HTTP listener, so no separate port 3001 can be orphaned.
+let ready = false;
+const server = createHttpServer((req, res) => {
+  if (!ready) {
+    res.writeHead(503, { "Retry-After": "1" });
+    res.end("TalkWeave is starting. Retry shortly.");
+    return;
+  }
+  app(req, res);
+});
+let vite: import("vite").ViteDevServer | undefined;
+try {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
   });
-  app.use(vite.middlewares);
-}
-app.listen(port, "127.0.0.1", () =>
+  recoverInterruptedJobs();
+  if (process.env.NODE_ENV === "production") {
+    app.use(express.static(path.resolve("dist")));
+    app.get("/{*path}", (_req, res) =>
+      res.sendFile(path.resolve("dist/index.html")),
+    );
+  } else {
+    const { createServer } = await import("vite");
+    vite = await createServer({
+      server: { middlewareMode: true, hmr: { server } },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  }
+  ready = true;
   console.log(
     `TalkWeave: http://127.0.0.1:${port} · local private storage · ${process.env.OPENAI_API_KEY ? "API key configured (not yet verified)" : "API key missing; demo available"}`,
-  ),
-);
+  );
+  const shutdown = async () => {
+    server.close();
+    await Promise.all([...jobs.keys()].map(cancelJob));
+    await vite?.close();
+    server.closeAllConnections();
+  };
+  process.once("SIGTERM", () => void shutdown());
+  process.once("SIGINT", () => void shutdown());
+} catch (error) {
+  await vite?.close();
+  server.close();
+  console.error(
+    (error as NodeJS.ErrnoException).code === "EADDRINUSE"
+      ? `TalkWeave could not start: port ${port} is already in use. Stop the existing TalkWeave server (Ctrl+C in its terminal), then run npm run dev again. No new server was started.`
+      : "TalkWeave could not start. Check the local port and build configuration.",
+  );
+  process.exitCode = 1;
+}

@@ -20,18 +20,24 @@
 | Check | Result / scope |
 | --- | --- |
 | Production build | TypeScript check and Vite production build pass. |
-| Focused regression tests | Nine tests: clock offset/pause mapping; unknown metadata; interval validation; source/quote validation; inert export and reference resolution; image metadata stripping; request-schema citations; failure/resume and edit preservation; cancellation/deletion liveness. Provider doubles are explicitly injected in pipeline tests. |
+| Focused regression tests | Ten tests (including duplicate-startup/job preservation): clock offset/pause mapping; unknown metadata; interval validation; source/quote validation; inert export and reference resolution; image metadata stripping; request-schema citations; failure/resume and edit preservation; cancellation/deletion liveness. Provider doubles are explicitly injected in pipeline tests. |
 | Browser workflow | Headless installed Chrome on macOS: create demo; deliberately wrong photo match corrected to 30–60s; reload persistence; transcript correction with hostile HTML; note edits; search; source playback; dark/light desktop and 390px mobile layouts; HTML/ZIP download; library filtering/search and mobile session creation; missing key; audio/photo import; HEIC error; origin/mutation-token protection; deletion. |
 | Device recording | Automated Chrome with a synthetic microphone: capture/playback; pause gaps; offline save failure; lost server response and idempotent retry; saved-chunk reload and decode; permission denial; simulated track loss; simulated IndexedDB quota exhaustion with in-tab download; late permission grant after cancellation. No physical microphone, Safari, iPhone, Android, or full-length capture test. |
 | Offline export | Chrome `file://`, backend stopped, network offline: text and embedded images render, every fragment link resolves, no HTTP requests; extracted evidence-bundle audio loads and plays. Standalone HTML has no audio player. |
 | Live OpenAI transport | A 49.963-second synthetic M4A and two authored slide JPEGs ran through real `gpt-transcribe` and `gpt-4.1-mini-2025-04-14` requests. Two timestamped windows, two image analyses, and a final five-section / sixteen-claim document. This is a live integration test with synthetic input, not a real talk trial. |
 | Live retry behavior | The inherited environment credential first returned HTTP 401. After the intended repository `.env` was added, transcription and image analysis succeeded. A source-less claim was rejected before save. Citation constraints were strengthened; a later shallow draft prompted coverage checks and an explicit all-source generation prompt. Resumption reused saved audio/photo work. |
 | Live content audit | Compared the final synthetic draft against the authored speech and slides: queue decoupling, at-least-once delivery, idempotency, absent throughput measurements, retry backoff/dead letter queue, operational work/eventual consistency, and the rejected exactly-once guarantee were retained. Unreadable symbols remain uncertain. The initial shallow draft's unsupported “synthetic load” explanation was not retained in the accepted draft; background generation is disabled by default. |
-| Budget | No paid API requests were made for the UI/recording revision. Local conservative allowance reserved: **$3.80**, including failed requests/retries. This is not measured billing. No account billing reconciliation was performed. |
+| Budget | Recording attachment diagnosis added a real browser-capture/OpenAI run reserving $1.70. Local conservative allowance reserved: **$5.50**, including failed requests/retries. This is not measured billing. No account billing reconciliation was performed. |
 | Dependency audit | `npm audit` reports zero vulnerabilities after replacing the initial ZIP dependency and updating sharp. |
 | Visible preview | In-app browser host unavailable. Automated Chrome execution and screenshot inspection were available. |
 
 Generated inputs, live results, and test screenshots are local-only ignored artifacts. `fixtures/generated/live-result` contains the accepted synthetic notebook, manifest, ZIP, and verification report. The deliberate timing-correction exercise flags the document as potentially stale; that flag is preserved in exports instead of silently claiming regeneration.
+
+## Recording attachment follow-up
+
+Reproduced a failed save against the older still-running port-3000 server. Its multipart handler rejected the recorder metadata with a misleading size/count error, while the updated frontend was visible through Vite. Fixed server compatibility detection, token refresh on save, duplicate-startup reporting, shared-port HMR, and generated-export reloads. Improved attachment confirmation and the completed-notebook action.
+
+The same recovered 52.380-second synthetic browser recording then completed real OpenAI processing with two authored photos into four sections/seven source-linked claims. Its standalone HTML and extracted ZIP worked with the actual backend stopped and network offline. Ten unit/startup tests and ten browser tests pass. See [the reproduction, exact user path, artifacts, and limits](RECORDING_E2E.md).
 
 ## Remaining limitations and risks
 

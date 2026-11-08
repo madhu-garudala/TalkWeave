@@ -20,6 +20,13 @@ test("demo import/review/export persists edits and renders offline without a bac
       level: 1,
     }),
   ).toBeVisible();
+  await page.getByRole("tab", { name: "Import", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Open notebook", exact: true })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Notes", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: /Photos & alignment/ }).click();
   await page.getByLabel("Photo 1 start").fill("30");
   await page.getByLabel("Photo 1 end").fill("60");
@@ -82,6 +89,12 @@ test("demo import/review/export persists edits and renders offline without a bac
   const download = await downloadPromise;
   const exportPath = testInfo.outputPath("portable-notes.html");
   await download.saveAs(exportPath);
+  const manifestPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: /Source manifest/ }).click();
+  await (await manifestPromise).saveAs(testInfo.outputPath("manifest.json"));
+  // Saving generated HTML inside the repo must not hot-reload the page and
+  // close this dialog before the remaining exports can be downloaded.
+  await expect(page.getByRole("dialog")).toBeVisible();
   const zipDownloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: /Evidence bundle/ }).click();
   const zipDownload = await zipDownloadPromise;

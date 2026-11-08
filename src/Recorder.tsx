@@ -37,11 +37,15 @@ const formats = [
 ];
 export function Recorder({
   sessionId,
+  sessionTitle,
+  serverReady,
   disabled,
   onActive,
   onSave,
 }: {
   sessionId: string;
+  sessionTitle: string;
+  serverReady: boolean;
   disabled: boolean;
   onActive: (active: boolean) => void;
   onSave: (file: File, capture: CaptureMetadata) => Promise<void>;
@@ -527,6 +531,23 @@ export function Recorder({
                       : "Microphone audio"}
         </span>
       </div>
+      {!serverReady && (
+        <div className="recorder-message" role="alert">
+          <AlertCircle size={17} />
+          <span>
+            The running server needs a restart to attach recordings. Stop it
+            with Ctrl+C and run npm run dev again. Existing browser recordings
+            are kept; retry Save to session after restarting.
+          </span>
+        </div>
+      )}
+      {state === "ready" && (
+        <p className="muted">
+          Your audio is saved in this browser. Choose{" "}
+          <strong>Save to session</strong> to attach it to “{sessionTitle}”,
+          then add photos and create your notebook.
+        </p>
+      )}
       {!supported ? (
         <div className="recorder-message">
           <AlertCircle size={17} />
@@ -545,7 +566,7 @@ export function Recorder({
           </p>
           <button
             className="primary"
-            disabled={disabled || state === "loading"}
+            disabled={disabled || !serverReady || state === "loading"}
             onClick={() => void start()}
           >
             <Mic size={17} />

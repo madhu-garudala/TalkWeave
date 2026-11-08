@@ -90,6 +90,7 @@ export type Session = {
   };
 };
 export type Config = {
+  captureVersion?: number;
   configured: boolean;
   transcriptionModel: string;
   notesModel: string;
